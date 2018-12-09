@@ -7,17 +7,20 @@ export {parseCode,create_new_st};
 
 let st;
 let st_output;
-let color_location;
+let color;
+let if_line;
 
 
 const parseCode = (codeToParse,args_val) => {
     st=[];
     st_output=[];
-    color_location=[];
+    color=[];
+    if_line=[];
     var args=_cut_the_args_val(args_val);
     var code=json_analyzer(esprima.parseScript(codeToParse,{loc:true}),args,0);
-    console.log(color_location);
-    return escodegen.generate(code);
+    var str_code= escodegen.generate(code);
+    get_if_line(str_code);
+    return {code:str_code,line:if_line,color:color};
     // return esprima.parseScript(codeToParse,{loc:true});
 };
 
@@ -25,6 +28,15 @@ function strcmp(a, b)
 {
     return (a<b?-1:(a>b?1:0));
 }
+
+function get_if_line(str){
+    let arr=str.split('\n');
+    for(var i=0;i<arr.length;i++){
+        if(arr[i].indexOf('if')>=0)
+            if_line.push(i);
+    }
+}
+
 
 
 function copy_arr(aObject) {
@@ -147,77 +159,6 @@ function check_if_id_in_st(id,depth){
     return output;
 }
 
-function check_if_val_in_st(id,depth){
-    var output=-1;
-    for(var i=0;i<st.length;i++){
-        if(st[i].val===id){
-            if(output===-1)
-                output=i;
-            else{
-                if(st[output].depth-depth>st[i].depth-depth)
-                    output=i;
-            }
-        }
-    }
-    return output;
-}
-// function extract_number(str){
-//         var arr=str.split(" ");
-//     var output=get_real_val(arr[0]);
-//
-//     for(var i=0;i<arr.length;i++){
-//             str_val=arr[i];
-//             if(isNaN(arr[i]))
-//                 var str_val=extract_number(get_real_val(arr[i]));
-//             i++;
-//             switch (arr[i]) {
-//                 case '+': str_val
-//
-//             }
-//         }
-// }
-
-function eval_real_BinaryExpression(lst,depth) {
-    var left=eval_real_val(lst.left,depth);
-    var right=eval_real_val(lst.right,depth);
-    return binary_calculation(lst.operator,left,right);
-}
-
-function eval_real_Identifier(lst,depth) {
-    var name=lst.name;
-    var index=check_if_id_in_st(name,depth);
-    if(index<0)
-        index=check_if_val_in_st(name,depth);
-    console.log('name: '+name+' index: '+index+'\n');
-    return st[index].val;
-}
-
-function eval_real_val(lst,depth){
-    switch (lst.type) {
-    case 'BinaryExpression':
-        return eval_real_BinaryExpression(lst,depth);
-    case 'Identifier':
-        return eval_real_Identifier(lst,depth);
-    case 'Literal':
-        return lst.value;
-
-
-    }
-}
-
-function check_the_color(test, depth) {
-    var test_left=eval_real_val(test.left,depth);
-    var test_right=eval_real_val(test.right,depth);
-    switch (test.operator) {
-    case'<': return test_left<test_right;
-    case'<=': return test_left<=test_right;
-    case'>': return test_left>test_right;
-    case'>=': return test_left>=test_right;
-    case'=': return test_left===test_right;
-    case'!=': return test_left!==test_right;
-    }
-}
-
 function binary_calculation(operator,left,right){
     if(typeof left=== 'number' && left===0)
         return right;
@@ -236,6 +177,32 @@ function binary_calculation(operator,left,right){
     }
 }
 
+function get_the_real_value(str){
+    var arr=str.split(' ');
+    for(var i=0;i<arr.length;i++){
+
+        if(isNaN(+arr[i]) && (arr[i]!=='+'&&arr[i]!=='-'&&arr[i]!=='*'&&arr[i]!=='/')){
+            var j=check_if_id_in_st(arr[i]);
+            arr[i]=st[j].val;
+        }
+    }
+    var output=arr[0];
+    for( i=1;i<arr.length;i++){
+        output+=arr[i];
+    }
+    return eval(output);
+}
+
+function get_the_color(lst,args_val,depth){
+    var left=eval_val(lst.left,depth);
+    left=get_the_real_value(left);
+    var right=eval_val(lst.right,depth);
+    right=get_the_real_value(right);
+    if(eval(left+' '+lst.operator+' '+right))
+        color.push(1);
+    else
+        color.push(2);
+}
 
 
 
@@ -381,9 +348,7 @@ function nt_BinaryExpression(lst, args_val,depth) {
 function nt_IfStatement(lst, args_val, depth) {
     var output=lst;
     output.test=json_analyzer(output.test,args_val,depth);
-    var line_num=lst.loc.start.line;
-    var color=check_the_color(lst.test,depth);
-    color_location.push({line:line_num,color:color});
+    get_the_color(lst.test, args_val, depth);
     depth=depth+1;
     var tmp=copy_arr(st);
     output.consequent=json_analyzer(output.consequent,args_val,depth);
